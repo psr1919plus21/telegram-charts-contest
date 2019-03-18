@@ -432,14 +432,18 @@ class Chart {
         
         
         if (isAutoRender) {
-            this.render();
+            this.render(
+                { offsetLeft: 50, offsetRight: 0 }
+            );
         }
 
         this._createChartMeta(this.canvasCtx);
         this._createControls();
     }
 
-    render() {
+    render(options) {
+        const {offsetLeft, offsetRight} = options;
+
         const { state,
                 data, 
                 canvasCtx, 
@@ -450,7 +454,17 @@ class Chart {
         canvasCtx.clearRect(0, 0, canvasWidth, canvasHeight);
         for (let key in state.controls) {
             if (state.controls[key].isVisible) {
-                this._drawChartLine(canvasCtx, {x: data.lines.x, y: data.lines[key]}, canvasHeight, xStep, data.colors[key]);
+                const sliceLeft = offsetLeft ? data.lines[key].length / 100 * offsetLeft : 0;
+                const sliceRight = offsetRight ? data.lines[key].length - (data.lines[key].length / 100 * offsetRight) : data.lines[key].length;
+                this.xStep = this.canvasWidth / (data.lines.x.slice(sliceLeft, sliceRight).length - 1);
+                console.log(data.lines.x.slice(sliceLeft, sliceRight).length);
+                this._drawChartLine(canvasCtx, 
+                    {
+                        x: data.lines.x.slice(sliceLeft, sliceRight), 
+                        y: data.lines[key].slice(sliceLeft, sliceRight)
+                    }, 
+                    canvasHeight, this.xStep, data.colors[key]
+                );
             } 
         }
            
@@ -474,33 +488,10 @@ class Chart {
             });  
         });
 
-        // preparedData = this._collapseDublicates(preparedData);
-
         preparedData.colors = data.colors;
 
         return preparedData;
     }
-
-    /**
-     * Collapse dublicate date with the arithmetic mean of its values
-     * @param {*} data 
-     */
-    // _collapseDublicates(data) {
-    //     const colapsedData = {};
-
-    //     data.lines.x.forEach((item, index) => {
-    //         if (colapsedData[item]) {
-    //             // пушим игрека 
-    //             colapsedData[item].push(data.lines.y0[index]);
-    //         } else {
-    //             // создаем массив по ключу и пушим игрека
-    //             colapsedData[item] = [];
-    //             colapsedData[item].push(data.lines.y0[index]);
-    //         }
-    //     });
-
-    //     console.log(colapsedData);
-    // }
 
     /**
      * Draw line on passed canvas
@@ -573,7 +564,6 @@ class Chart {
     }
 
     _createXAxisLabels() {
-        console.log(this.data);
         let xPosition = 0;
         let prevLabel;
 
