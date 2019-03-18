@@ -10,7 +10,29 @@ const Helpers = {
         wrapper.appendChild(element);
 
         return wrapper;
-    }
+    },
+
+    isCollision: function(element1, element2) {
+        let element1ClientRect = element1.getBoundingClientRect();
+        let element2ClientRect = element2.getBoundingClientRect();
+
+        var x1 = element1ClientRect.left;
+        var y1 = element1ClientRect.top;
+        var h1 = element1ClientRect.height;
+        var w1 = element1ClientRect.width;
+        var b1 = y1 + h1;
+        var r1 = x1 + w1;
+
+        var x2 = element2ClientRect.left;
+        var y2 = element2ClientRect.top;
+        var h2 = element2ClientRect.height;
+        var w2 = element2ClientRect.width;
+        var b2 = y2 + h2;
+        var r2 = x2 + w2;
+  
+        if (b1 < y2 || y1 > b2 || r1 < x2 || x1 > r2) return false;
+        return true;
+      }
 }
 
 
@@ -385,10 +407,19 @@ const chartsData = {
 };
 
 class Chart {
-    constructor(data, canvas) {
+    constructor({ data, canvas, isAutoRender = true }) {
         this.data = this._prepareData(data);
         this.canvas = canvas;
         this.state = { controls: {} };
+        this.canvasWidth = canvas.clientWidth;
+        this.canvasHeight = canvas.clientHeight;
+        this.xStep = this.canvasWidth / (this.data.lines.x.length - 1);
+        
+        if (canvas.getContext) {
+            this.canvasCtx = canvas.getContext('2d');
+        } else {
+            throw new Error('Your browser doesn\'t support canvas.');
+        }
 
         for (let key in this.data.lines) {
             if (key !== 'x') {
@@ -398,35 +429,41 @@ class Chart {
 
         this.wrapper = Helpers.wrapElement({className: 'canvas-wrapper'}, this.canvas);
 
+        
+        
+        if (isAutoRender) {
+            this.render();
+        }
+
+        this._createChartMeta(this.canvasCtx);
         this._createControls();
     }
 
     render() {
-        const { data, canvas } = this;
-        const canvasWidth = canvas.clientWidth;
-        const canvasHeight = canvas.clientHeight;
-        const xStep = canvasWidth / (data.lines.x.length - 1);
-        
-        if (canvas.getContext){
-            var canvasCtx = canvas.getContext('2d');
-            canvasCtx.clearRect(0, 0, canvasWidth, canvasHeight);
+        const { state,
+                data, 
+                canvasCtx, 
+                canvasWidth, 
+                canvasHeight, 
+                xStep } = this;
 
-            for (let key in this.state.controls) {
-               if (this.state.controls[key].isVisible) {
-                    this._drawChartLine(canvasCtx, {x: data.lines.x, y: data.lines[key]}, canvasHeight, xStep, data.colors[key]);
-               } 
-            }
-          }
+        canvasCtx.clearRect(0, 0, canvasWidth, canvasHeight);
+        for (let key in state.controls) {
+            if (state.controls[key].isVisible) {
+                this._drawChartLine(canvasCtx, {x: data.lines.x, y: data.lines[key]}, canvasHeight, xStep, data.colors[key]);
+            } 
+        }
+           
     }
 
     /**
      * Prepare data for chart
      * 
-     * @returns {x: number[], y0: number[], y1: number[]}
+     * @returns {lines: {x: number[], y0: number[], y1: number[]}
      */
     _prepareData(data) {
-        const preparedData = { lines: {} };
-        
+        let preparedData = { lines: {} };
+
         data.columns.forEach(column => {
             column.forEach((item, index) => {
                 if (index === 0) {
@@ -437,10 +474,33 @@ class Chart {
             });  
         });
 
+        // preparedData = this._collapseDublicates(preparedData);
+
         preparedData.colors = data.colors;
 
         return preparedData;
     }
+
+    /**
+     * Collapse dublicate date with the arithmetic mean of its values
+     * @param {*} data 
+     */
+    // _collapseDublicates(data) {
+    //     const colapsedData = {};
+
+    //     data.lines.x.forEach((item, index) => {
+    //         if (colapsedData[item]) {
+    //             // пушим игрека 
+    //             colapsedData[item].push(data.lines.y0[index]);
+    //         } else {
+    //             // создаем массив по ключу и пушим игрека
+    //             colapsedData[item] = [];
+    //             colapsedData[item].push(data.lines.y0[index]);
+    //         }
+    //     });
+
+    //     console.log(colapsedData);
+    // }
 
     /**
      * Draw line on passed canvas
@@ -468,8 +528,6 @@ class Chart {
      * Create controls
      */
     _createControls() {
-        console.log(this.state);
-
         const controls = document.createElement('div');
         controls.classList.add('controls');
         
@@ -504,13 +562,66 @@ class Chart {
             this.render();
         }
     }
+
+    /**
+     * Create meta information for charts
+     * X and Y
+     */
+    _createChartMeta(canvasCtx) {
+        this._createXAxisLabels(canvasCtx);
+
+    }
+
+    _createXAxisLabels() {
+        console.log(this.data);
+        let xPosition = 0;
+        let prevLabel;
+
+        this.data.lines.x.forEach((dateString) => {
+            const dateObject =  new Date(dateString);
+            const dayNumber = dateObject.getDate();
+            const monthName = dateObject.toLocaleString('en-us', { month: 'short' });
+           
+            const label = document.createElement('div');
+            label.classList.add('label_x');
+            label.textContent = `${dayNumber} ${monthName}`;
+            label.style.cssText = `
+                position: absolute;
+                bottom: -28px;
+                left: ${xPosition}px;
+                min-width: 100px;
+            `;
+
+            this.wrapper.appendChild(label);
+
+            xPosition += this.xStep;
+
+            if (prevLabel) {
+               if (Helpers.isCollision(prevLabel, label)) {
+                    label.style.display = 'none';
+               } else {
+                    prevLabel = label;
+               }
+            } else {
+                prevLabel = label;
+            } 
+        });
+    }
 }
 
 ////////////////////////////////////////
 
 const chart1Canvas = document.querySelector('.telegram-charts__canvas');
-const chart1 = new Chart(chartsData, chart1Canvas);
-chart1.render();
+const chart1 = new Chart({ data: chartsData, canvas: chart1Canvas });
+
+// Settings
+// data
+// canvas
+// isAutorender
+
+
+// public methods
+// render
 
 
 
