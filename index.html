@@ -40,6 +40,52 @@
 
         .label_x {
             color: #fff;
+            min-width: 80px;
+            position: absolute;
+            bottom: -28px;
+            text-align: left;
+        }
+
+        .chart-map-wrapper {
+            position: absolute;
+            bottom: -198px;
+            left: 0;
+        }
+
+        .chart-map {
+            background: #333;
+        }
+
+        .chart-map__range {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(255, 255, 255, .3);
+        }
+
+        .chart-map__control {
+            width: 4px;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            cursor: ew-resize;
+            background: #fff;
+            z-index: 9;
+        }
+
+        .chart-map__control_left {
+            left: 0;
+        }
+
+        .chart-map__control_right {
+            right: 0;
+        }
+
+        .chart-map__control_active {
+            background: #33f;
         }
     </style>
 </head>

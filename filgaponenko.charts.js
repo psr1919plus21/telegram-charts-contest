@@ -410,10 +410,17 @@ class Chart {
     constructor({ data, canvas, isAutoRender = true }) {
         this.data = this._prepareData(data);
         this.canvas = canvas;
-        this.state = { controls: {} };
+        this.state = { 
+            controls: {},
+            offsetLeft: 0,
+            offsetRight: 0
+        };
+
         this.canvasWidth = canvas.clientWidth;
         this.canvasHeight = canvas.clientHeight;
         this.xStep = this.canvasWidth / (this.data.lines.x.length - 1);
+        this.sliceLeft = 0;
+        this.sliceRight = this.data.lines.x.length - 1;
         
         if (canvas.getContext) {
             this.canvasCtx = canvas.getContext('2d');
@@ -432,17 +439,15 @@ class Chart {
         
         
         if (isAutoRender) {
-            this.render(
-                { offsetLeft: 50, offsetRight: 0 }
-            );
-        }
-
-        this._createChartMeta(this.canvasCtx);
-        this._createControls();
+            this.render();
+            this._createChartMeta(this.canvasCtx);
+            this._createControls();
+            this._createChartMap();
+        } 
     }
 
-    render(options) {
-        const {offsetLeft, offsetRight} = options;
+    render() {
+        const {offsetLeft, offsetRight} = this.state;
 
         const { state,
                 data, 
@@ -454,14 +459,14 @@ class Chart {
         canvasCtx.clearRect(0, 0, canvasWidth, canvasHeight);
         for (let key in state.controls) {
             if (state.controls[key].isVisible) {
-                const sliceLeft = offsetLeft ? data.lines[key].length / 100 * offsetLeft : 0;
-                const sliceRight = offsetRight ? data.lines[key].length - (data.lines[key].length / 100 * offsetRight) : data.lines[key].length;
-                this.xStep = this.canvasWidth / (data.lines.x.slice(sliceLeft, sliceRight).length - 1);
-                console.log(data.lines.x.slice(sliceLeft, sliceRight).length);
+                this.sliceLeft = offsetLeft ? data.lines[key].length / 100 * offsetLeft : 0;
+                this.sliceRight = offsetRight ? data.lines[key].length - (data.lines[key].length / 100 * offsetRight) : data.lines[key].length;
+                this.xStep = this.canvasWidth / (data.lines.x.slice(this.sliceLeft, this.sliceRight).length - 1);
+            
                 this._drawChartLine(canvasCtx, 
                     {
-                        x: data.lines.x.slice(sliceLeft, sliceRight), 
-                        y: data.lines[key].slice(sliceLeft, sliceRight)
+                        x: data.lines.x.slice(this.sliceLeft, this.sliceRight), 
+                        y: data.lines[key].slice(this.sliceLeft, this.sliceRight)
                     }, 
                     canvasHeight, this.xStep, data.colors[key]
                 );
@@ -563,11 +568,14 @@ class Chart {
 
     }
 
+    /**
+     * Create X Axis Labels
+     */
     _createXAxisLabels() {
         let xPosition = 0;
         let prevLabel;
 
-        this.data.lines.x.forEach((dateString) => {
+        this.data.lines.x.slice(this.sliceLeft, this.sliceRight).forEach((dateString) => {
             const dateObject =  new Date(dateString);
             const dayNumber = dateObject.getDate();
             const monthName = dateObject.toLocaleString('en-us', { month: 'short' });
@@ -575,12 +583,7 @@ class Chart {
             const label = document.createElement('div');
             label.classList.add('label_x');
             label.textContent = `${dayNumber} ${monthName}`;
-            label.style.cssText = `
-                position: absolute;
-                bottom: -28px;
-                left: ${xPosition}px;
-                min-width: 100px;
-            `;
+            label.style.cssText = `left: ${xPosition}px;`;
 
             this.wrapper.appendChild(label);
 
@@ -596,6 +599,115 @@ class Chart {
                 prevLabel = label;
             } 
         });
+    }
+
+    /**
+     * Create Chart Map
+     */
+    _createChartMap() {
+        const chartMapHeight = 100;
+        const chartMapCanvas = document.createElement('canvas');
+        chartMapCanvas.setAttribute('width', this.canvasWidth);
+        chartMapCanvas.setAttribute('height', chartMapHeight);
+        chartMapCanvas.classList.add('chart-map');
+        let chartMapCanvasCtx = null;
+
+        this.wrapper.appendChild(chartMapCanvas);
+
+        if (chartMapCanvas.getContext) {
+            chartMapCanvasCtx = chartMapCanvas.getContext('2d');
+        } else {
+            throw new Error('Your browser doesn\'t support canvas.');
+        }
+
+        const { state, data } = this;
+
+        chartMapCanvasCtx.scale(1, 0.3);
+        chartMapCanvasCtx.translate(0, chartMapHeight * 1.5);
+        for (let key in state.controls) {
+            if (state.controls[key].isVisible) {
+                const xStep = this.canvasWidth / (data.lines.x.length - 1);
+            
+                this._drawChartLine(chartMapCanvasCtx, 
+                    {
+                        x: data.lines.x, 
+                        y: data.lines[key]
+                    }, 
+                    160, this.xStep, data.colors[key]
+                );
+            } 
+        }
+
+        const chartMapWrapper = Helpers.wrapElement({className: 'chart-map-wrapper'}, chartMapCanvas);
+        this._createChartMapRange(chartMapWrapper);
+    }
+
+    _createChartMapRange(chartMapWrapper) {
+        this.chartMapRange = document.createElement('div');
+        this.chartMapRange.classList.add('chart-map__range');
+
+        // Left control
+        this.chartMapLeftControl = document.createElement('div');
+        this.chartMapLeftControl.classList.add('chart-map__control');
+        this.chartMapLeftControl.classList.add('chart-map__control_left');
+        this.chartMapRange.appendChild(this.chartMapLeftControl);
+
+        // Right control
+        this.chartMapRightControl = document.createElement('div');
+        this.chartMapRightControl.classList.add('chart-map__control');
+        this.chartMapRightControl.classList.add('chart-map__control_right');
+        this.chartMapRange.appendChild(this.chartMapRightControl);
+
+        chartMapWrapper.appendChild(this.chartMapRange);
+
+        this.chartMapLeftControl.addEventListener('mousedown', this._rangeResizeLeftStart);
+        this.chartMapRightControl.addEventListener('mousedown', this._rangeResizeRightStart);
+    }
+
+    _rangeResizeLeftStart = () => {
+        this.chartMapResizeDirection = 'left';
+        this.existOffset = +this.chartMapRange.style.left.slice(0, -2) || 0;
+        this.positionKeep = this.chartMapRange.getBoundingClientRect().left;
+        this.chartMapLeftControl.classList.add('chart-map__control_active');
+
+        window.addEventListener('mousemove', this._rangeResize);
+        window.addEventListener('mouseup', this._rangeResizeStop);
+    }
+
+    _rangeResizeRightStart = () => {
+        this.chartMapResizeDirection = 'right';
+        this.existOffset = +this.chartMapRange.style.right.slice(0, -2) || 0;
+        this.positionKeep = this.chartMapRange.getBoundingClientRect().right;
+        this.chartMapRightControl.classList.add('chart-map__control_active');
+
+        window.addEventListener('mousemove', this._rangeResize);
+        window.addEventListener('mouseup', this._rangeResizeStop);
+    }
+
+    _rangeResize = (e) => {
+        let offsetX;
+
+        if (this.chartMapResizeDirection === 'left') {
+            offsetX = e.x - this.positionKeep;
+        } else {
+            offsetX = -(e.x - this.positionKeep);
+        }
+
+        offsetX = Math.max(0, offsetX);
+        offsetX = Math.min(this.canvasWidth, offsetX);
+
+        const percentOfCanvasWidth = this.canvasWidth / 100;
+        const newPosition = e.x > this.positionKeepthis ? this.existOffset - offsetX : this.existOffset + offsetX;
+        console.log(newPosition);
+        this.chartMapRange.style[this.chartMapResizeDirection] = `${newPosition}px`;
+        this.state.offsetLeft = offsetX / percentOfCanvasWidth;
+        this.render();
+    }
+
+    _rangeResizeStop = () => {
+        this.chartMapLeftControl.classList.remove('chart-map__control_active');
+        this.chartMapRightControl.classList.remove('chart-map__control_active');
+        window.removeEventListener('mousemove', this._rangeResize);
     }
 }
 
