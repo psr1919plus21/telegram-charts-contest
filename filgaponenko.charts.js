@@ -556,6 +556,7 @@ class Chart {
         if (name in this.state.controls) {
             this.state.controls[name].isVisible = !this.state.controls[name].isVisible;
             this.render();
+            this._chartMapUpdate();
         }
     }
 
@@ -610,25 +611,25 @@ class Chart {
         this.chartMapCanvas.setAttribute('width', this.canvasWidth);
         this.chartMapCanvas.setAttribute('height', chartMapHeight);
         this.chartMapCanvas.classList.add('chart-map');
-        let chartMapCanvasCtx = null;
+        this.chartMapCanvasCtx = null;
 
         this.wrapper.appendChild(this.chartMapCanvas);
 
         if (this.chartMapCanvas.getContext) {
-            chartMapCanvasCtx = this.chartMapCanvas.getContext('2d');
+            this.chartMapCanvasCtx = this.chartMapCanvas.getContext('2d');
         } else {
             throw new Error('Your browser doesn\'t support canvas.');
         }
 
         const { state, data } = this;
 
-        chartMapCanvasCtx.scale(1, 0.3);
-        chartMapCanvasCtx.translate(0, chartMapHeight * 1.5);
+        this.chartMapCanvasCtx.scale(1, 0.3);
+        this.chartMapCanvasCtx.translate(0, chartMapHeight * 1.5);
         for (let key in state.controls) {
             if (state.controls[key].isVisible) {
                 const xStep = this.canvasWidth / (data.lines.x.length - 1);
             
-                this._drawChartLine(chartMapCanvasCtx, 
+                this._drawChartLine(this.chartMapCanvasCtx, 
                     {
                         x: data.lines.x, 
                         y: data.lines[key]
@@ -640,6 +641,25 @@ class Chart {
 
         const chartMapWrapper = Helpers.wrapElement({className: 'chart-map-wrapper'}, this.chartMapCanvas);
         this._createChartMapRange(chartMapWrapper);
+    }
+
+    _chartMapUpdate() {
+        const { state, data, canvasWidth } = this;
+
+        this.chartMapCanvasCtx.clearRect(0, -300, canvasWidth, 600);
+        for (let key in state.controls) {
+            if (state.controls[key].isVisible) {
+                const xStep = this.canvasWidth / (data.lines.x.length - 1);
+            
+                this._drawChartLine(this.chartMapCanvasCtx, 
+                    {
+                        x: data.lines.x, 
+                        y: data.lines[key]
+                    }, 
+                    160, xStep, data.colors[key]
+                );
+            } 
+        }
     }
 
     _createChartMapRange(chartMapWrapper) {
@@ -662,6 +682,7 @@ class Chart {
 
         this.chartMapLeftControl.addEventListener('mousedown', this._rangeResizeLeftStart);
         this.chartMapRightControl.addEventListener('mousedown', this._rangeResizeRightStart);
+        this.chartMapRange.addEventListener('mousedown', this._rangeDragStart);
     }
 
     _rangeResizeLeftStart = () => {
@@ -682,6 +703,71 @@ class Chart {
 
         window.addEventListener('mousemove', this._rangeResize);
         window.addEventListener('mouseup', this._rangeResizeStop);
+    }
+
+    _rangeDragStart = (e) => {
+        if (!e.target.classList.contains('chart-map__range')) {
+            return;
+        }
+
+        this.positionKeep = e.x;
+        this.positionKeepLeft = this.chartMapRange.getBoundingClientRect().left;
+        this.positionKeepRight = this.chartMapRange.getBoundingClientRect().right;
+        this.existOffsetLeft = +this.chartMapRange.style.left.slice(0, -2) || 0;
+        this.existOffsetRight = +this.chartMapRange.style.right.slice(0, -2) || 0;
+
+        this.chartMapRange.classList.add('chart-map__range_active');
+        this.chartMapRightControl.classList.add('chart-map__control_active');
+        this.chartMapLeftControl.classList.add('chart-map__control_active');
+
+        window.addEventListener('mouseup', this._rangeDragStop);
+        window.addEventListener('mousemove', this._rangeDrag);
+    }
+
+    _rangeDrag = (e) => {
+        const leftBorder = this.chartMapCanvas.getBoundingClientRect().left;
+        const rightBorder = this.chartMapCanvas.getBoundingClientRect().right;
+        let offsetX;
+        let eX = e.x;
+
+        
+        if (eX < leftBorder) {
+            eX = leftBorder;
+        }
+
+        if (eX > rightBorder) {
+            eX = rightBorder;
+        }
+
+        let xDelta = eX - this.positionKeep;
+
+        if (this.positionKeepRight + xDelta > rightBorder ) {
+            xDelta = rightBorder - this.positionKeepRight;
+        }
+
+        if (this.positionKeepLeft + xDelta < leftBorder) {
+            xDelta = leftBorder - this.positionKeepLeft;
+        }
+
+        let newPositionLeft = this.existOffsetLeft + xDelta;
+        let newPositionRight = this.existOffsetRight - xDelta;
+        
+        this.chartMapRange.style.left = `${newPositionLeft}px`;
+        this.chartMapRange.style.right = `${newPositionRight}px`;
+
+        const percentOfCanvasWidth = this.canvasWidth / 100;
+
+        this.state.offsetLeft = (this.positionKeepLeft + xDelta - leftBorder) / percentOfCanvasWidth;
+        this.state.offsetRight = Math.abs((this.positionKeepRight + xDelta - rightBorder) / percentOfCanvasWidth);
+        this.render();
+    }
+
+    _rangeDragStop = () => {
+        this.chartMapRange.classList.remove('chart-map__range_active');
+        this.chartMapRightControl.classList.remove('chart-map__control_active');
+        this.chartMapLeftControl.classList.remove('chart-map__control_active');
+
+        window.removeEventListener('mousemove', this._rangeDrag);
     }
 
     _rangeResize = (e) => {
