@@ -606,16 +606,16 @@ class Chart {
      */
     _createChartMap() {
         const chartMapHeight = 100;
-        const chartMapCanvas = document.createElement('canvas');
-        chartMapCanvas.setAttribute('width', this.canvasWidth);
-        chartMapCanvas.setAttribute('height', chartMapHeight);
-        chartMapCanvas.classList.add('chart-map');
+        this.chartMapCanvas = document.createElement('canvas');
+        this.chartMapCanvas.setAttribute('width', this.canvasWidth);
+        this.chartMapCanvas.setAttribute('height', chartMapHeight);
+        this.chartMapCanvas.classList.add('chart-map');
         let chartMapCanvasCtx = null;
 
-        this.wrapper.appendChild(chartMapCanvas);
+        this.wrapper.appendChild(this.chartMapCanvas);
 
-        if (chartMapCanvas.getContext) {
-            chartMapCanvasCtx = chartMapCanvas.getContext('2d');
+        if (this.chartMapCanvas.getContext) {
+            chartMapCanvasCtx = this.chartMapCanvas.getContext('2d');
         } else {
             throw new Error('Your browser doesn\'t support canvas.');
         }
@@ -638,7 +638,7 @@ class Chart {
             } 
         }
 
-        const chartMapWrapper = Helpers.wrapElement({className: 'chart-map-wrapper'}, chartMapCanvas);
+        const chartMapWrapper = Helpers.wrapElement({className: 'chart-map-wrapper'}, this.chartMapCanvas);
         this._createChartMapRange(chartMapWrapper);
     }
 
@@ -685,22 +685,30 @@ class Chart {
     }
 
     _rangeResize = (e) => {
+        const leftBorder = this.chartMapCanvas.getBoundingClientRect().left;
+        const rightBorder = this.chartMapCanvas.getBoundingClientRect().right;
         let offsetX;
+        let eX = e.x;
 
-        if (this.chartMapResizeDirection === 'left') {
-            offsetX = e.x - this.positionKeep;
-        } else {
-            offsetX = -(e.x - this.positionKeep);
+        if (eX < leftBorder) {
+            eX = leftBorder;
         }
 
-        offsetX = Math.max(0, offsetX);
-        offsetX = Math.min(this.canvasWidth, offsetX);
-
+        if (eX > rightBorder) {
+            eX = rightBorder;
+        }
+        
         const percentOfCanvasWidth = this.canvasWidth / 100;
-        const newPosition = e.x > this.positionKeepthis ? this.existOffset - offsetX : this.existOffset + offsetX;
-        console.log(newPosition);
+        if (this.chartMapResizeDirection === 'left') {
+            offsetX = eX - this.positionKeep;
+            this.state.offsetLeft = (eX - leftBorder) / percentOfCanvasWidth;
+        } else {
+            offsetX = -(eX - this.positionKeep);
+            this.state.offsetRight = (rightBorder - eX) / percentOfCanvasWidth;
+        }
+
+        const newPosition = this.existOffset + offsetX;
         this.chartMapRange.style[this.chartMapResizeDirection] = `${newPosition}px`;
-        this.state.offsetLeft = offsetX / percentOfCanvasWidth;
         this.render();
     }
 
